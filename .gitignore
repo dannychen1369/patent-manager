@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.db
+*.sqlite3
+
+# PyInstaller build output
+backend/build/
+backend/dist/
+
+# Runtime storage (user data)
+backend/storage/case_files/*
+backend/storage/uploads/*
+!backend/storage/**/.gitkeep
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Installer artifacts / large binaries
+installer_output/
+vc_redist.x64.exe
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

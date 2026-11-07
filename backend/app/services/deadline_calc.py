@@ -68,17 +68,47 @@ def calculate_deadlines(
     doc_variant: str | None,
     patent_type: PatentType | None,
     issue_date: date | None,
+    raw_text: str | None = None,
 ) -> list[dict]:
-    """Returns a list of {deadline_type, due_date, rule_matched, note} dicts."""
+    """Returns a list of {deadline_type, due_date, rule_matched, note} dicts.
+
+    Deadlines printed in the notice itself (e.g. a fee notice's "应当于…之前
+    缴纳") come first; configured rules add period-based ones on top."""
+    from .doc_parser import extract_stated_deadlines
+
+    results = [
+        {
+            "deadline_type": d["deadline_type"],
+            "due_date": d["due_date"],
+            "rule_matched": False,
+            "note": "通知书中载明的截止日",
+        }
+        for d in (extract_stated_deadlines(raw_text) if raw_text else [])
+    ]
     rules = find_matching_rules(db, doc_type, doc_variant, patent_type)
     if not rules:
-        return []
-    results = []
+        # 第三次、第四次… rarely have a rule of their own; the "第二次" rule is
+        # the "第二次及后续" rule, so it covers every later round too.
+        from .doc_parser import variant_ordinal
+
+        n = variant_ordinal(doc_variant)
+        if n is not None and n > 2:
+            rules = find_matching_rules(db, doc_type, "第二次", patent_type)
+    from .doc_parser import extract_stated_period_months
+
+    stated_months = extract_stated_period_months(raw_text) if raw_text else None
     for rule in rules:
-        due_date = add_period(issue_date, rule.period_value, rule.period_unit) if issue_date else None
+        value, unit = rule.period_value, rule.period_unit
         note = None
-        if not rule.is_verified:
+        if stated_months is not None and not (unit == "月" and value == stated_months):
+            # The notice's own stated period beats the generic rule, e.g. an
+            # invention's 初审-stage 审查意见通知书 is 2 months, not the
+            # 4 months of a 实审 first office action.
+            value, unit = stated_months, "月"
+            note = f"按通知书载明的{stated_months}个月计算（规则为{rule.period_value}{rule.period_unit}）"
+        elif not rule.is_verified:
             note = "该期限规则尚未人工核对，请在使用前于「期限规则管理」页面确认法定期限是否准确"
+        due_date = add_period(issue_date, value, unit) if issue_date else None
         results.append(
             {
                 "deadline_type": rule.deadline_type,

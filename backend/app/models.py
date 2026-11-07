@@ -30,7 +30,9 @@ class CaseStage(str, enum.Enum):
     DRAFTING = "撰写中"
     FILED = "已提交申请"
     ACCEPTED = "已受理"
-    PRELIM_EXAM = "初审阶段"
+    PRELIM_EXAM = "初审合格"
+    PUBLISHED = "已公布"
+    SUBSTANTIVE_EXAM = "实质审查"
     FIRST_EXAM = "一审"
     SECOND_EXAM = "二审"
     THIRD_EXAM_PLUS = "三审及以后"
@@ -48,7 +50,11 @@ class CaseStage(str, enum.Enum):
 class DocType(str, enum.Enum):
     DISCLOSURE = "交底书"
     RECEIPT_NOTICE = "受理通知书"
+    FEE_PAYMENT_NOTICE = "缴纳申请费通知书"
+    FEE_REDUCTION_NOTICE = "收费减缴审批通知书"
     PRELIM_EXAM_PASS_NOTICE = "初步审查合格通知书"
+    PUBLICATION_NOTICE = "发明专利申请公布通知书"
+    SUBSTANTIVE_EXAM_NOTICE = "进入实质审查阶段通知书"
     OFFICE_ACTION = "审查意见通知书"
     CORRECTION_NOTICE = "补正通知书"
     DEEMED_WITHDRAWN_NOTICE = "视为撤回通知书"
@@ -70,11 +76,57 @@ class DeadlineStatus(str, enum.Enum):
     OVERDUE = "已超期"
 
 
+class Agent(Base):
+    """Patent attorney (专利代理人) roster. People can share a name, so the
+    technical field and the 执业证号 are what tell them apart."""
+
+    __tablename__ = "agents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), index=True)
+    # 执业代理人 / 实习代理人 / 代理人助理 — trainees have no 执业证号 yet.
+    role: Mapped[str] = mapped_column(String(20), default="执业代理人")
+    field: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    license_no: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Left staff stay on their historical cases but can't be picked anymore.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Company(Base):
+    """A client enterprise. Cases are organized under a company; the company
+    name is also mirrored into Case.client_name so older code paths/filters
+    that only know client_name keep working.
+    """
+
+    __tablename__ = "companies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    credit_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    contact_person: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    cases: Mapped[list["Case"]] = relationship(
+        back_populates="company", order_by="Case.created_at.desc()"
+    )
+
+
 class Case(Base):
     __tablename__ = "cases"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     internal_no: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
     client_name: Mapped[str] = mapped_column(String(200))
     patent_name: Mapped[str] = mapped_column(String(300))
     patent_type: Mapped[str] = mapped_column(
@@ -87,13 +139,22 @@ class Case(Base):
     current_stage: Mapped[str] = mapped_column(
         Enum(CaseStage, native_enum=False), default=CaseStage.DISCLOSURE_PENDING_CONFIRM
     )
+    # Responsible attorney. `agent` mirrors the roster name for display and
+    # for cases entered before the roster existed.
+    agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
     agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 一案双申 counterpart (invention <-> utility model filed the same day).
+    # Kept symmetric: both cases point at each other.
+    twin_case_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cases.id"), nullable=True
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
+    company: Mapped["Company | None"] = relationship(back_populates="cases")
     stage_events: Mapped[list["CaseStageEvent"]] = relationship(
         back_populates="case", cascade="all, delete-orphan", order_by="CaseStageEvent.changed_at"
     )
@@ -131,6 +192,12 @@ class Document(Base):
     case_id: Mapped[int | None] = mapped_column(ForeignKey("cases.id"), nullable=True)
     file_path: Mapped[str] = mapped_column(String(500))
     original_filename: Mapped[str] = mapped_column(String(300))
+    # sha256 of the file content, used to detect the same notice being
+    # imported twice (e.g. re-importing a folder that was partly done before).
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # 发文序号: unique per notice CNIPA sends, so it identifies the same notice
+    # even when the file itself differs (re-downloaded, re-scanned...).
+    dispatch_no: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     doc_type: Mapped[str] = mapped_column(Enum(DocType, native_enum=False))
     doc_variant: Mapped[str | None] = mapped_column(String(50), nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -142,6 +209,7 @@ class Document(Base):
     patent_type: Mapped[str | None] = mapped_column(
         Enum(PatentType, native_enum=False), nullable=True
     )
+    application_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

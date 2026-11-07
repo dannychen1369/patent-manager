@@ -4,13 +4,20 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..database import STORAGE_DIR, engine, save_storage_dir
+from ..database import STORAGE_DIR, engine, load_config, save_config_value, save_storage_dir
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 class DataDirOut(BaseModel):
     data_dir: str
+    # Kept in the app config file rather than browser storage: the desktop
+    # window uses a fresh port and private storage on every launch.
+    onboarding_done: bool = False
+
+
+class OnboardingState(BaseModel):
+    done: bool
 
 
 class DataDirChange(BaseModel):
@@ -19,7 +26,15 @@ class DataDirChange(BaseModel):
 
 @router.get("", response_model=DataDirOut)
 def get_settings():
-    return DataDirOut(data_dir=str(STORAGE_DIR))
+    return DataDirOut(
+        data_dir=str(STORAGE_DIR), onboarding_done=bool(load_config().get("onboarding_done"))
+    )
+
+
+@router.post("/onboarding")
+def set_onboarding(payload: OnboardingState):
+    save_config_value("onboarding_done", payload.done)
+    return {"ok": True}
 
 
 @router.post("/data-dir")

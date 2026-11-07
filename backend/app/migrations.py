@@ -32,3 +32,10 @@ def run_lightweight_migrations(engine: Engine, metadata: MetaData) -> None:
                     else:
                         stmt += f" DEFAULT {default_val}"
                 conn.execute(text(stmt))
+
+    # create_all() also skips indexes on tables that already existed, so
+    # indexes declared on newly-added columns have to be created here too.
+    with engine.begin() as conn:
+        for table in metadata.sorted_tables:
+            for index in table.indexes:
+                index.create(bind=conn, checkfirst=True)

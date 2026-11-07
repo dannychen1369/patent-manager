@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Button, Input, Modal, Select, Space, Table, Tag, Typography, message } from "antd";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import { CASE_STAGES, type CaseOut } from "../types";
+import AgentSelect from "../components/AgentSelect";
+import { CASE_STAGES, type CaseOut, type CompanyOut } from "../types";
 
 const { Title } = Typography;
 
@@ -12,6 +13,13 @@ export default function CaseList() {
   const [stage, setStage] = useState<string | undefined>();
   const [clientName, setClientName] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [companyId, setCompanyId] = useState<number | undefined>();
+  const [agentId, setAgentId] = useState<number | null>(null);
+  const [companies, setCompanies] = useState<CompanyOut[]>([]);
+
+  useEffect(() => {
+    api.get<CompanyOut[]>("/companies").then((res) => setCompanies(res.data));
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -19,6 +27,8 @@ export default function CaseList() {
       .get<CaseOut[]>("/cases", {
         params: {
           stage: stage || undefined,
+          company_id: companyId,
+          agent_id: agentId ?? undefined,
           client_name: clientName || undefined,
         },
       })
@@ -30,7 +40,7 @@ export default function CaseList() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [stage]);
+  useEffect(load, [stage, companyId, agentId]);
 
   const deleteOne = (caseRow: CaseOut) => {
     Modal.confirm({
@@ -83,6 +93,22 @@ export default function CaseList() {
       <Space style={{ marginBottom: 16 }}>
         <Select
           allowClear
+          showSearch
+          placeholder="按企业筛选"
+          style={{ width: 240 }}
+          optionFilterProp="label"
+          value={companyId}
+          onChange={setCompanyId}
+          options={companies.map((c) => ({ label: c.name, value: c.id }))}
+        />
+        <AgentSelect
+          style={{ width: 220 }}
+          placeholder="按承办人筛选"
+          value={agentId}
+          onChange={setAgentId}
+        />
+        <Select
+          allowClear
           placeholder="按阶段筛选"
           style={{ width: 160 }}
           value={stage}
@@ -90,7 +116,7 @@ export default function CaseList() {
           options={CASE_STAGES.map((s) => ({ label: s, value: s }))}
         />
         <Input.Search
-          placeholder="按客户名称搜索"
+          placeholder="按企业名称关键字搜索"
           style={{ width: 220 }}
           value={clientName}
           onChange={(e) => setClientName(e.target.value)}
@@ -114,9 +140,19 @@ export default function CaseList() {
           {
             title: "内部编号",
             dataIndex: "internal_no",
-            render: (v: string, row) => <Link to={`/cases/${row.id}`}>{v}</Link>,
+            render: (v: string, row) => (
+              <Space size={4}>
+                <Link to={`/cases/${row.id}`}>{v}</Link>
+                {row.twin_case_id && <Tag color="purple">双申</Tag>}
+              </Space>
+            ),
           },
-          { title: "客户名称", dataIndex: "client_name" },
+          {
+            title: "所属企业",
+            dataIndex: "client_name",
+            render: (v: string, row) =>
+              row.company_id ? <Link to={`/companies/${row.company_id}`}>{v}</Link> : v,
+          },
           { title: "专利名称", dataIndex: "patent_name" },
           { title: "专利类型", dataIndex: "patent_type" },
           { title: "申请号", dataIndex: "application_no" },

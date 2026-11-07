@@ -18,6 +18,10 @@ import {
 import { UploadOutlined } from "@ant-design/icons";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import CaseFlowSteps from "../components/CaseFlowSteps";
+import AgentSelect from "../components/AgentSelect";
+import CompanyPicker from "../components/CompanyPicker";
+import TwinCasePanel from "../components/TwinCasePanel";
 import {
   CASE_FILE_CATEGORY_PRESETS,
   CASE_STAGES,
@@ -33,6 +37,10 @@ export default function CaseDetail() {
   const [detail, setDetail] = useState<CaseDetailOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [newStage, setNewStage] = useState<CaseStage | undefined>();
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [newAgentId, setNewAgentId] = useState<number | null>(null);
 
   const [fileCategory, setFileCategory] = useState("");
   const [fileRoundNo, setFileRoundNo] = useState("");
@@ -60,6 +68,31 @@ export default function CaseDetail() {
       })
       .catch((err) => message.error(err.message));
   };
+
+  const changeCompany = () => {
+    if (!newCompanyName.trim()) {
+      message.warning("请选择或输入企业");
+      return Promise.reject();
+    }
+    return api
+      .patch(`/cases/${id}`, { client_name: newCompanyName.trim() })
+      .then(() => {
+        message.success("已转到新企业");
+        setCompanyModalOpen(false);
+        load();
+      })
+      .catch((err) => message.error(err.message));
+  };
+
+  const changeAgent = () =>
+    api
+      .patch(`/cases/${id}`, { agent_id: newAgentId })
+      .then(() => {
+        message.success("承办人已更新");
+        setAgentModalOpen(false);
+        load();
+      })
+      .catch((err) => message.error(err.message));
 
   const changeStage = () => {
     if (!newStage) return;
@@ -163,8 +196,31 @@ export default function CaseDetail() {
         </Space>
       </Space>
 
+      <CaseFlowSteps
+        patentType={detail.patent_type}
+        currentStage={detail.current_stage}
+        events={detail.stage_events}
+      />
+
+      <TwinCasePanel detail={detail} onChanged={load} />
+
       <Descriptions bordered column={2} style={{ marginBottom: 24 }}>
-        <Descriptions.Item label="客户名称">{detail.client_name}</Descriptions.Item>
+        <Descriptions.Item label="所属企业">
+          {detail.company_id ? (
+            <Link to={`/companies/${detail.company_id}`}>{detail.client_name}</Link>
+          ) : (
+            detail.client_name
+          )}
+          <a
+            style={{ marginLeft: 12, fontSize: 12 }}
+            onClick={() => {
+              setNewCompanyName(detail.client_name);
+              setCompanyModalOpen(true);
+            }}
+          >
+            更换
+          </a>
+        </Descriptions.Item>
         <Descriptions.Item label="专利类型">{detail.patent_type}</Descriptions.Item>
         <Descriptions.Item label="申请号">
           {detail.application_no ?? "（尚未获得申请号）"}
@@ -173,15 +229,50 @@ export default function CaseDetail() {
         <Descriptions.Item label="当前阶段">
           <Tag color="blue">{detail.current_stage}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="承办人">{detail.agent ?? "-"}</Descriptions.Item>
+        <Descriptions.Item label="承办人">
+          {detail.agent ?? "-"}
+          <a
+            style={{ marginLeft: 12, fontSize: 12 }}
+            onClick={() => {
+              setNewAgentId(detail.agent_id);
+              setAgentModalOpen(true);
+            }}
+          >
+            {detail.agent ? "更换" : "设置"}
+          </a>
+        </Descriptions.Item>
         <Descriptions.Item label="备注" span={2}>
           {detail.notes ?? "-"}
         </Descriptions.Item>
       </Descriptions>
 
+      <Modal
+        title="设置承办人"
+        open={agentModalOpen}
+        onCancel={() => setAgentModalOpen(false)}
+        onOk={changeAgent}
+        okText="确定"
+      >
+        <AgentSelect value={newAgentId} onChange={setNewAgentId} />
+      </Modal>
+
+      <Modal
+        title="更换所属企业"
+        open={companyModalOpen}
+        onCancel={() => setCompanyModalOpen(false)}
+        onOk={changeCompany}
+        okText="确定"
+      >
+        <CompanyPicker
+          style={{ width: "100%" }}
+          value={newCompanyName}
+          onChange={setNewCompanyName}
+        />
+      </Modal>
+
       <Space style={{ marginBottom: 24 }}>
         <Select
-          placeholder="手动流转到指定阶段"
+          placeholder="手动调整阶段"
           style={{ width: 200 }}
           value={newStage}
           onChange={setNewStage}
@@ -190,6 +281,9 @@ export default function CaseDetail() {
         <Button onClick={changeStage} disabled={!newStage}>
           更新阶段
         </Button>
+        <Typography.Text type="secondary">
+          阶段由上传的通知书自动决定（以发文日最晚的通知书为准），一般无需手动调整
+        </Typography.Text>
       </Space>
 
       <Title level={4}>阶段时间线</Title>

@@ -40,15 +40,23 @@ def _load_storage_dir() -> Path:
     return _default_storage_dir()
 
 
-def save_storage_dir(path: Path) -> None:
-    config = {}
+def load_config() -> dict:
     if CONFIG_PATH.exists():
         try:
-            config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            config = {}
-    config["data_dir"] = str(path)
+            return {}
+    return {}
+
+
+def save_config_value(key: str, value) -> None:
+    config = load_config()
+    config[key] = value
     CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_storage_dir(path: Path) -> None:
+    save_config_value("data_dir", str(path))
 
 
 STORAGE_DIR = _load_storage_dir()

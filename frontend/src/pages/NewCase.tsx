@@ -1,12 +1,25 @@
+import { useEffect } from "react";
 import { Button, Form, Input, Select, Typography, message } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import AgentSelect from "../components/AgentSelect";
+import CompanyPicker from "../components/CompanyPicker";
+import type { CompanyOut } from "../types";
 
 const { Title } = Typography;
 
 export default function NewCase() {
   const navigate = useNavigate();
   const [form] = Form.useForm();
+  const [searchParams] = useSearchParams();
+  const presetCompanyId = searchParams.get("company_id");
+
+  useEffect(() => {
+    if (!presetCompanyId) return;
+    api
+      .get<CompanyOut>(`/companies/${presetCompanyId}`)
+      .then((res) => form.setFieldsValue({ client_name: res.data.name }));
+  }, [presetCompanyId, form]);
 
   const onFinish = (values: Record<string, unknown>) => {
     api
@@ -22,8 +35,13 @@ export default function NewCase() {
     <div style={{ maxWidth: 560 }}>
       <Title level={3}>新建案件（交底书录入）</Title>
       <Form form={form} layout="vertical" onFinish={onFinish}>
-        <Form.Item name="client_name" label="客户名称" rules={[{ required: true }]}>
-          <Input placeholder="客户/申请人名称" />
+        <Form.Item
+          name="client_name"
+          label="所属企业"
+          rules={[{ required: true, message: "请选择或输入所属企业" }]}
+          extra="输入的企业不存在时会自动新建"
+        >
+          <CompanyPicker />
         </Form.Item>
         <Form.Item name="patent_name" label="专利名称" rules={[{ required: true }]}>
           <Input placeholder="发明创造名称" />
@@ -38,8 +56,8 @@ export default function NewCase() {
             ]}
           />
         </Form.Item>
-        <Form.Item name="agent" label="承办人">
-          <Input />
+        <Form.Item name="agent_id" label="承办人（代理人）">
+          <AgentSelect />
         </Form.Item>
         <Form.Item name="notes" label="交底备注">
           <Input.TextArea rows={4} placeholder="交底书内容摘要 / 技术方案要点等" />

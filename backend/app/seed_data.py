@@ -76,6 +76,33 @@ SEED_RULES: list[dict] = [
         description="复审通知书答复期限常见为2个月，请核对官方文书载明期限。",
     ),
     dict(
+        doc_type=DocType.REJECTION_DECISION,
+        doc_variant=None,
+        patent_type=None,
+        deadline_type="提出复审请求期限",
+        period_value=3,
+        period_unit="月",
+        description="对驳回决定不服的，可自收到驳回决定之日起3个月内请求复审（专利法第41条），请核对官方文书载明期限。",
+    ),
+    dict(
+        doc_type=DocType.SUBSTANTIVE_EXAM_NOTICE,
+        doc_variant=None,
+        patent_type=None,
+        deadline_type="主动修改期限",
+        period_value=3,
+        period_unit="月",
+        description="发明专利申请人自收到进入实质审查阶段通知书之日起3个月内可主动修改申请文件。",
+    ),
+    dict(
+        doc_type=DocType.GRANT_NOTICE,
+        doc_variant=None,
+        patent_type=None,
+        deadline_type="办理登记手续期限",
+        period_value=2,
+        period_unit="月",
+        description="授予专利权通知书与办理登记手续通知书同时发出，2个月内办理登记手续，逾期视为放弃取得专利权。",
+    ),
+    dict(
         doc_type=DocType.DEEMED_WITHDRAWN_NOTICE,
         doc_variant=None,
         patent_type=None,
@@ -88,8 +115,15 @@ SEED_RULES: list[dict] = [
 
 
 def seed_deadline_rules(db: Session) -> None:
-    if db.query(DeadlineRule).first() is not None:
-        return
+    """Seed default rules. On an existing install only rules for document
+    types that have no rule at all yet are added (types introduced by an
+    update), so rules the user edited or deleted stay as they are."""
+    existing_types = {row[0] for row in db.query(DeadlineRule.doc_type).distinct()}
+    added = False
     for rule in SEED_RULES:
+        if rule["doc_type"] in existing_types:
+            continue
         db.add(DeadlineRule(**rule, is_active=True, is_verified=False))
-    db.commit()
+        added = True
+    if added:
+        db.commit()

@@ -8,8 +8,23 @@ from fastapi.staticfiles import StaticFiles
 
 from .database import BASE_DIR, Base, SessionLocal, engine
 from .migrations import run_lightweight_migrations
-from .routers import case_files, cases, deadline_rules, deadlines, documents, settings
+from .routers import (
+    agents,
+    case_files,
+    cases,
+    companies,
+    deadline_rules,
+    deadlines,
+    documents,
+    settings,
+)
 from .seed_data import seed_deadline_rules
+from .services.company_utils import (
+    backfill_case_agents,
+    backfill_case_companies,
+    backfill_case_patent_types,
+)
+from .services.twin import backfill_twins
 
 app = FastAPI(title="专利管理系统")
 
@@ -21,6 +36,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(agents.router)
+app.include_router(companies.router)
 app.include_router(cases.router)
 app.include_router(case_files.router)
 app.include_router(documents.router)
@@ -36,6 +53,10 @@ def on_startup():
     db = SessionLocal()
     try:
         seed_deadline_rules(db)
+        backfill_case_companies(db)
+        backfill_case_patent_types(db)
+        backfill_twins(db)
+        backfill_case_agents(db)
     finally:
         db.close()
 

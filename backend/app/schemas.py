@@ -5,25 +5,115 @@ from pydantic import BaseModel, ConfigDict
 from .models import CaseStage, DeadlineStatus, DocType, PatentType
 
 
+# ---------- Agent (专利代理人) ----------
+class AgentCreate(BaseModel):
+    name: str
+    role: str = "执业代理人"
+    field: str | None = None
+    license_no: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    notes: str | None = None
+    is_active: bool = True
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    field: str | None = None
+    license_no: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class AgentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    role: str
+    field: str | None
+    license_no: str | None
+    phone: str | None
+    email: str | None
+    notes: str | None
+    is_active: bool
+    created_at: datetime
+    case_count: int = 0
+
+
+# ---------- Company ----------
+class CompanyCreate(BaseModel):
+    name: str
+    credit_code: str | None = None
+    contact_person: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    address: str | None = None
+    notes: str | None = None
+
+
+class CompanyUpdate(BaseModel):
+    name: str | None = None
+    credit_code: str | None = None
+    contact_person: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    address: str | None = None
+    notes: str | None = None
+
+
+class CompanyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    credit_code: str | None
+    contact_person: str | None
+    contact_phone: str | None
+    contact_email: str | None
+    address: str | None
+    notes: str | None
+    created_at: datetime
+    case_count: int = 0
+    pending_deadline_count: int = 0
+
+
+class CompanyDetailOut(CompanyOut):
+    cases: list["CaseOut"] = []
+
+
 # ---------- Case ----------
 class CaseCreate(BaseModel):
-    client_name: str
+    # Either pick an existing company (company_id) or give a name, in which
+    # case a company of that name is found or created automatically.
+    company_id: int | None = None
+    client_name: str | None = None
     patent_name: str
     patent_type: PatentType = PatentType.UNKNOWN
     application_no: str | None = None
     application_date: date | None = None
+    agent_id: int | None = None
     agent: str | None = None
     notes: str | None = None
 
 
 class CaseUpdate(BaseModel):
+    company_id: int | None = None
     client_name: str | None = None
     patent_name: str | None = None
     patent_type: PatentType | None = None
     application_no: str | None = None
     application_date: date | None = None
+    agent_id: int | None = None
     agent: str | None = None
     notes: str | None = None
+
+
+class TwinLink(BaseModel):
+    twin_case_id: int
 
 
 class StageChange(BaseModel):
@@ -51,14 +141,17 @@ class CaseOut(BaseModel):
 
     id: int
     internal_no: str
+    company_id: int | None
     client_name: str
     patent_name: str
     patent_type: PatentType
     application_no: str | None
     application_date: date | None
     current_stage: CaseStage
+    agent_id: int | None = None
     agent: str | None
     notes: str | None
+    twin_case_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -98,8 +191,17 @@ class DocumentParseResult(BaseModel):
     applicant_name: str | None
     patent_name: str | None
     patent_type: PatentType | None
+    application_date: date | None = None
     matched_case_id: int | None
     matched_case_internal_no: str | None
+    matched_company_id: int | None = None
+    matched_company_name: str | None = None
+    # Set when exactly this file (same content hash) was already recorded.
+    duplicate_document_id: int | None = None
+    duplicate_case_id: int | None = None
+    duplicate_case_internal_no: str | None = None
+    duplicate_reason: str | None = None
+    dispatch_no: str | None = None
     suggested_deadlines: list["SuggestedDeadline"] = []
 
 
@@ -121,8 +223,17 @@ class DocumentConfirm(BaseModel):
     applicant_name: str | None
     patent_name: str | None
     patent_type: PatentType | None
+    application_date: date | None = None
     case_id: int | None = None  # explicit override; else matched by application_no
     create_new_case_if_unmatched: bool = False
+    # Company for a newly-created case; if omitted, the company is found or
+    # created from applicant_name.
+    company_id: int | None = None
+    dispatch_no: str | None = None
+    # Responsible attorney for a newly-created case.
+    agent_id: int | None = None
+    # Save even though the same notice is already recorded.
+    allow_duplicate: bool = False
 
 
 class DocumentOut(BaseModel):
@@ -138,6 +249,7 @@ class DocumentOut(BaseModel):
     applicant_name: str | None
     patent_name: str | None
     patent_type: PatentType | None
+    application_date: date | None = None
     is_confirmed: bool
     created_at: datetime
 
@@ -208,5 +320,6 @@ class DeadlineRuleOut(BaseModel):
     is_verified: bool
 
 
+CompanyDetailOut.model_rebuild()
 CaseDetailOut.model_rebuild()
 DocumentParseResult.model_rebuild()
